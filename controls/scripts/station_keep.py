@@ -31,8 +31,9 @@ class StationKeep():
 
         self.current_state = np.array([[0],[0],[0]])
 
-        self.Kp = np.array([[1000,0,0],[0,1000,0],[0,0,1000]])
+        self.Kp = np.array([[200,0,0],[0,200,0],[0,0,1000]])
         self.Kd = np.array([[100,0,0],[0,100,0],[0,0,100]])
+        self.Ki = np.array([[0.01, 0, 0],[0, 0.01, 0],[0, 0, 0.01]])
 
         self.fl_cmd = rospy.Publisher('/wamv/thrusters/left_front_thrust_cmd', Float32, queue_size=1)
         self.fr_cmd = rospy.Publisher('/wamv/thrusters/right_front_thrust_cmd', Float32, queue_size=1)
@@ -49,6 +50,8 @@ class StationKeep():
                   [lx1*np.sin(a1) - ly1*np.cos(a1), lx2*np.sin(a2) - ly2*np.cos(a2), lx3*np.sin(a3) - ly3*np.cos(a3), lx4*np.sin(a4) - ly4*np.cos(a4)]])
         
         self.T_pinv = np.linalg.pinv(T) # 4*3
+
+        self.error_int = 0
 
     def goal_callback(self, msg):
         self.goal_lat = msg.pose.position.latitude
@@ -114,6 +117,9 @@ class StationKeep():
         
         return k
 
+    def ssa(self, angle):
+        return angle if angle < math.pi else angle - 2*math.pi
+
 
     def current_pose_callback(self, msg):
         x = msg.pose.pose.position.x
@@ -151,9 +157,11 @@ class StationKeep():
         while not rospy.is_shutdown():
             
             self.error = self.goal_state - self.current_state  
+            self.error[2] = self.ssa(self.error[2])
             self.error_dot = np.dot(self.rotZ3D(self.current_state[2]),-np.array([[self.u],[self.v],[self.r]]))
+            self.error_int = self.error_int + self.error*0.15
 
-            tau_global = np.dot(self.Kp, self.error) + np.dot(self.Kd, self.error_dot) # tau in global frame
+            tau_global = np.dot(self.Kp, self.error) + np.dot(self.Kd, self.error_dot) + np.dot(self.Ki, self.error_int ) # tau in global frame
             tau_local = np.dot(np.transpose(self.rotZ3D(self.current_state[2])), tau_global)
 
             f = np.dot(self.T_pinv, tau_local)
