@@ -31,8 +31,8 @@ class StationKeep():
 
         self.current_state = np.array([[0],[0],[0]])
 
-        self.Kp = np.array([[15,0,0],[0,15,0],[0,0,25]])
-        self.Kd = np.array([[1,0,0],[0,1,0],[0,0,1]])
+        self.Kp = np.array([[1000,0,0],[0,1000,0],[0,0,1000]])
+        self.Kd = np.array([[100,0,0],[0,100,0],[0,0,100]])
 
         self.fl_cmd = rospy.Publisher('/wamv/thrusters/left_front_thrust_cmd', Float32, queue_size=1)
         self.fr_cmd = rospy.Publisher('/wamv/thrusters/right_front_thrust_cmd', Float32, queue_size=1)
@@ -119,6 +119,10 @@ class StationKeep():
         x = msg.pose.pose.position.x
         y = msg.pose.pose.position.y
 
+        self.u = msg.twist.twist.linear.x
+        self.v = msg.twist.twist.linear.y
+        self.r = msg.twist.twist.angular.z
+
         q = (msg.pose.pose.orientation.x,
              msg.pose.pose.orientation.y,
              msg.pose.pose.orientation.z,
@@ -146,8 +150,10 @@ class StationKeep():
 
         while not rospy.is_shutdown():
             
-            self.error = -self.current_state + self.goal_state
-            tau_global = np.dot(self.Kp, self.error) # tau in global frame
+            self.error = self.goal_state - self.current_state  
+            self.error_dot = np.dot(self.rotZ3D(self.current_state[2]),-np.array([[self.u],[self.v],[self.r]]))
+
+            tau_global = np.dot(self.Kp, self.error) + np.dot(self.Kd, self.error_dot) # tau in global frame
             tau_local = np.dot(np.transpose(self.rotZ3D(self.current_state[2])), tau_global)
 
             f = np.dot(self.T_pinv, tau_local)
